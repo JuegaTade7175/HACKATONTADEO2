@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind utilities;
+
+:root {
+    color-scheme: dark;
+    font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+html,
+body,
+#root {
+    min-height: 100%;
+}
+
+body {
+    margin: 0;
+    background: linear-gradient(180deg, #07101f 0%, #0a161f 100%);
+    color: white;
+}
+
+button,
+input,
+select,
+textarea {
+    font: inherit;
+}
