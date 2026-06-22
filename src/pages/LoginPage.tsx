@@ -2,11 +2,13 @@ import { FormEvent, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { login } from '../lib/auth'
 import { AuthUser } from '../types/api'
+import { useAuth } from '../App'
 
 export default function LoginPage() {
     const navigate = useNavigate()
     const location = useLocation()
     const from = (location.state as { from?: Location })?.from?.pathname || '/dashboard'
+    const { signIn } = useAuth()
 
     const [teamCode, setTeamCode] = useState('TEAM-001')
     const [email, setEmail] = useState('operator@tuckersoft.com')
@@ -21,8 +23,7 @@ export default function LoginPage() {
 
         try {
             const response = await login({ teamCode, email, password })
-            localStorage.setItem('tropelcare_token', response.token)
-            localStorage.setItem('tropelcare_user', JSON.stringify(response.user))
+            signIn(response.token, response.user)
             navigate(from, { replace: true })
         } catch (err) {
             setError('Error en el login. Verifica tus credenciales y vuelve a intentar.')

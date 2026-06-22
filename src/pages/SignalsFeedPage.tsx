@@ -7,19 +7,58 @@ const DEFAULT_LIMIT = 15
 
 export default function SignalsFeedPage() {
     const [searchParams, setSearchParams] = useSearchParams()
-    const [items, setItems] = useState<SignalSummary[]>([])
-    const [nextCursor, setNextCursor] = useState<string | null>(null)
-    const [hasMore, setHasMore] = useState(true)
+
+    // Cache logic for preserving scroll position and items
+    const cacheKey = searchParams.toString()
+    const cachedKey = sessionStorage.getItem('signals_feed_cache_key')
+    const hasCache = cachedKey === cacheKey
+
+    const initialItems = useMemo(() => {
+        if (hasCache) {
+            const raw = sessionStorage.getItem('signals_feed_items')
+            if (raw) {
+                try {
+                    return JSON.parse(raw) as SignalSummary[]
+                } catch {
+                    return []
+                }
+            }
+        }
+        return []
+    }, [hasCache])
+
+    const initialCursor = useMemo(() => {
+        if (hasCache) {
+            return sessionStorage.getItem('signals_feed_next_cursor') || null
+        }
+        return null
+    }, [hasCache])
+
+    const initialHasMore = useMemo(() => {
+        if (hasCache) {
+            return sessionStorage.getItem('signals_feed_has_more') !== 'false'
+        }
+        return true
+    }, [hasCache])
+
+    const [items, setItems] = useState<SignalSummary[]>(initialItems)
+    const [nextCursor, setNextCursor] = useState<string | null>(initialCursor)
+    const [hasMore, setHasMore] = useState(initialHasMore)
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    
     const [signalType, setSignalType] = useState(searchParams.get('signalType') ?? '')
     const [severity, setSeverity] = useState(searchParams.get('severity') ?? '')
     const [status, setStatus] = useState(searchParams.get('status') ?? '')
     const [query, setQuery] = useState(searchParams.get('q') ?? '')
+    
     const controllerRef = useRef<AbortController | null>(null)
     const loadingRef = useRef(false)
     const observerRef = useRef<IntersectionObserver | null>(null)
     const sentinelRef = useRef<HTMLDivElement | null>(null)
+
+    const didRestore = useRef(hasCache)
+    const [didScrollRestore, setDidScrollRestore] = useState(false)
 
     const filters = useMemo(
         () => ({
@@ -31,6 +70,7 @@ export default function SignalsFeedPage() {
         [query, severity, signalType, status],
     )
 
+    // Sync state filters to search params
     useEffect(() => {
         const params = new URLSearchParams()
         if (signalType) params.set('signalType', signalType)
@@ -40,18 +80,40 @@ export default function SignalsFeedPage() {
         setSearchParams(params)
     }, [query, severity, signalType, status, setSearchParams])
 
-    const loadFirstPage = useCallback(() => {
-        controllerRef.current?.abort()
-        setItems([])
-        setNextCursor(null)
-        setHasMore(true)
-        setError(null)
-        fetchPage(null)
-    }, [filters])
-
+    // Save cache to sessionStorage whenever items or filters change
     useEffect(() => {
-        loadFirstPage()
-    }, [loadFirstPage])
+        sessionStorage.setItem('signals_feed_cache_key', searchParams.toString())
+        sessionStorage.setItem('signals_feed_items', JSON.stringify(items))
+        sessionStorage.setItem('signals_feed_next_cursor', nextCursor ?? '')
+        sessionStorage.setItem('signals_feed_has_more', String(hasMore))
+    }, [items, nextCursor, hasMore, searchParams])
+
+    // Listen to scroll to save position
+    useEffect(() => {
+        const handleScroll = () => {
+            sessionStorage.setItem('signals_feed_scroll_pos', String(window.scrollY))
+        }
+        window.addEventListener('scroll', handleScroll, { passive: true })
+        return () => {
+            window.removeEventListener('scroll', handleScroll)
+        }
+    }, [])
+
+    // Restore scroll position once items are loaded
+    useEffect(() => {
+        if (items.length > 0 && !didScrollRestore) {
+            const savedPos = sessionStorage.getItem('signals_feed_scroll_pos')
+            if (savedPos) {
+                const scrollPos = Number(savedPos)
+                if (scrollPos > 0) {
+                    setTimeout(() => {
+                        window.scrollTo(0, scrollPos)
+                    }, 50)
+                }
+            }
+            setDidScrollRestore(true)
+        }
+    }, [items, didScrollRestore])
 
     const fetchPage = useCallback(
         async (cursor: string | null) => {
@@ -93,6 +155,27 @@ export default function SignalsFeedPage() {
         [filters, hasMore],
     )
 
+    const loadFirstPage = useCallback(() => {
+        controllerRef.current?.abort()
+        setItems([])
+        setNextCursor(null)
+        setHasMore(true)
+        setError(null)
+        setDidScrollRestore(true) // Don't try restoring scroll for fresh filters
+        sessionStorage.removeItem('signals_feed_scroll_pos')
+        fetchPage(null)
+    }, [filters, fetchPage])
+
+    // Load first page on filter changes (excluding restore from cache)
+    useEffect(() => {
+        if (didRestore.current) {
+            didRestore.current = false
+            return
+        }
+        loadFirstPage()
+    }, [loadFirstPage])
+
+    // IntersectionObserver for infinite scrolling
     useEffect(() => {
         if (!sentinelRef.current) return
         observerRef.current?.disconnect()
@@ -113,17 +196,25 @@ export default function SignalsFeedPage() {
         }
     }, [fetchPage, nextCursor])
 
+    function handleResetFilters() {
+        setSignalType('')
+        setSeverity('')
+        setStatus('')
+        setQuery('')
+        sessionStorage.removeItem('signals_feed_scroll_pos')
+    }
+
     return (
         <div className="space-y-8">
             <div className="rounded-3xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-slate-950/10">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <h1 className="text-2xl font-semibold text-slate-100">Feed de Señales</h1>
-                        <p className="mt-2 text-sm text-slate-400">Desplázate para cargar más señales automáticamente.</p>
+                        <p className="mt-2 text-sm text-slate-400">Desplázate para cargar más señales automáticamente. Filtros sincronizados con URL.</p>
                     </div>
                     <button
                         type="button"
-                        onClick={loadFirstPage}
+                        onClick={handleResetFilters}
                         className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
                     >
                         Reiniciar filtros
@@ -147,7 +238,9 @@ export default function SignalsFeedPage() {
             </div>
 
             {items.length === 0 && loading ? (
-                <p className="text-slate-300">Cargando el feed...</p>
+                <div className="flex h-40 items-center justify-center rounded-3xl border border-slate-800 bg-slate-900/40">
+                    <p className="text-slate-300">Cargando el feed...</p>
+                </div>
             ) : null}
 
             <div className="space-y-4">

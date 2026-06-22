@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import DashboardPage from './pages/DashboardPage'
 import LoginPage from './pages/LoginPage'
@@ -6,8 +6,9 @@ import SignalDetailPage from './pages/SignalDetailPage'
 import SignalsFeedPage from './pages/SignalsFeedPage'
 import SectorStoryPage from './pages/SectorStoryPage'
 import TropelsPage from './pages/TropelsPage'
-import { AuthUser, clearAuth, getToken, getUser, setAuth } from './lib/auth'
+import { clearAuth, getToken, getUser, setAuth } from './lib/auth'
 import { api } from './lib/api'
+import type { AuthUser } from './types/api'
 
 interface AuthContextValue {
     token: string | null
@@ -18,7 +19,7 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
-function useAuth() {
+export function useAuth() {
     const context = useContext(AuthContext)
     if (!context) {
         throw new Error('useAuth must be used within AuthProvider')
@@ -29,12 +30,34 @@ function useAuth() {
 function AuthProvider({ children }: { children: React.ReactNode }) {
     const [token, setToken] = useState<string | null>(getToken())
     const [user, setUser] = useState<AuthUser | null>(getUser())
+    const [verifying, setVerifying] = useState(!!token)
 
     useEffect(() => {
         if (token && user) {
             setAuth(token, user)
         }
     }, [token, user])
+
+    useEffect(() => {
+        if (token) {
+            api.get<AuthUser>('/auth/me', {
+                headers: { Authorization: `Bearer ${token}` }
+            })
+                .then((res) => {
+                    setUser(res.data)
+                })
+                .catch(() => {
+                    clearAuth()
+                    setToken(null)
+                    setUser(null)
+                })
+                .finally(() => {
+                    setVerifying(false)
+                })
+        } else {
+            setVerifying(false)
+        }
+    }, [token])
 
     const value = useMemo(
         () => ({
@@ -67,10 +90,20 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
         }
     }, [token])
 
+    if (verifying) {
+        return (
+            <div className="min-h-screen bg-slate-950 text-slate-50 flex items-center justify-center">
+                <div className="text-center space-y-4">
+                    <p className="text-slate-400 animate-pulse">Verificando sesión con TropelCare...</p>
+                </div>
+            </div>
+        )
+    }
+
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
-function RequireAuth({ children }: { children: JSX.Element }) {
+function RequireAuth({ children }: { children: React.ReactNode }) {
     const auth = useAuth()
     const location = useLocation()
 
@@ -78,7 +111,7 @@ function RequireAuth({ children }: { children: JSX.Element }) {
         return <Navigate to="/login" state={{ from: location }} replace />
     }
 
-    return children
+    return children as React.ReactElement
 }
 
 function AppLayout() {

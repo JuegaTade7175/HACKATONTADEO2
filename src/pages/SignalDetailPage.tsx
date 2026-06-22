@@ -14,12 +14,14 @@ export default function SignalDetailPage() {
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [saveError, setSaveError] = useState<string | null>(null)
+    const [success, setSuccess] = useState(false)
 
     useEffect(() => {
         if (!id) return
         let active = true
         setLoading(true)
         setError(null)
+        setSuccess(false)
 
         api
             .get<SignalSummary>(`/signals/${id}`)
@@ -48,12 +50,28 @@ export default function SignalDetailPage() {
         if (!signal) return
         setSaving(true)
         setSaveError(null)
+        setSuccess(false)
 
         try {
             const response = await api.patch<SignalSummary>(`/signals/${signal.id}/status`, { status })
             setSignal(response.data)
+            setSuccess(true)
+
+            // Update status in signals feed cache in sessionStorage so it is reflected when going back
+            const cachedItemsRaw = sessionStorage.getItem('signals_feed_items')
+            if (cachedItemsRaw) {
+                try {
+                    const cachedItems = JSON.parse(cachedItemsRaw) as SignalSummary[]
+                    const updatedItems = cachedItems.map((item) => 
+                        item.id === response.data.id ? { ...item, status: response.data.status } : item
+                    )
+                    sessionStorage.setItem('signals_feed_items', JSON.stringify(updatedItems))
+                } catch (e) {
+                    console.error('Error updating signals feed cache:', e)
+                }
+            }
         } catch {
-            setSaveError('Error al actualizar el estado. Intenta de nuevo.')
+            setSaveError('No se pudo actualizar el estado de la señal. Por favor, intenta de nuevo.')
         } finally {
             setSaving(false)
         }
@@ -76,7 +94,7 @@ export default function SignalDetailPage() {
             <button
                 type="button"
                 onClick={() => navigate(-1)}
-                className="rounded-2xl border border-slate-700 bg-slate-900/90 px-4 py-2 text-sm text-slate-200 hover:border-slate-600"
+                className="rounded-2xl border border-slate-700 bg-slate-900/90 px-4 py-2 text-sm text-slate-200 hover:border-slate-600 transition duration-200"
             >
                 ← Volver al feed
             </button>
@@ -103,29 +121,54 @@ export default function SignalDetailPage() {
                     </div>
 
                     <div className="space-y-4 rounded-3xl border border-slate-800 bg-slate-950/90 p-6">
-                        <p className="text-sm text-slate-400">Cambiar estado</p>
-                        <select
-                            value={status}
-                            onChange={(event) => setStatus(event.target.value)}
-                            disabled={saving}
-                            className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-slate-100 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
-                        >
-                            <option value="">Selecciona un estado</option>
-                            {STATUS_OPTIONS.map((option) => (
-                                <option key={option} value={option}>
-                                    {option}
-                                </option>
-                            ))}
-                        </select>
-                        {saveError ? <p className="text-rose-400">{saveError}</p> : null}
-                        <button
-                            type="button"
-                            onClick={handleSave}
-                            disabled={!canSave || saving}
-                            className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-700"
-                        >
-                            {saving ? 'Guardando...' : 'Actualizar estado'}
-                        </button>
+                        <p className="text-sm text-slate-400 font-medium">Atender Señal</p>
+                        
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                            <select
+                                value={status}
+                                onChange={(event) => {
+                                    setStatus(event.target.value)
+                                    setSuccess(false)
+                                    setSaveError(null)
+                                }}
+                                disabled={saving}
+                                className="flex-1 rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-slate-100 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition duration-200"
+                            >
+                                <option value="">Selecciona un estado</option>
+                                {STATUS_OPTIONS.map((option) => (
+                                    <option key={option} value={option}>
+                                        {option}
+                                    </option>
+                                ))}
+                            </select>
+                            
+                            <button
+                                type="button"
+                                onClick={handleSave}
+                                disabled={!canSave || saving}
+                                className="rounded-2xl bg-emerald-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-700 duration-200"
+                            >
+                                {saving ? 'Guardando...' : 'Actualizar estado'}
+                            </button>
+                        </div>
+
+                        {success && (
+                            <div className="rounded-2xl bg-emerald-500/10 border border-emerald-500/20 p-4 text-sm text-emerald-400">
+                                ✓ ¡Señal actualizada con éxito! El nuevo estado es <strong>{signal.status}</strong>.
+                            </div>
+                        )}
+
+                        {saveError && (
+                            <div className="rounded-2xl bg-rose-500/10 border border-rose-500/20 p-4 text-sm text-rose-400 flex flex-col gap-2">
+                                <span>✗ {saveError}</span>
+                                <button 
+                                    onClick={handleSave}
+                                    className="self-start text-xs font-semibold text-rose-300 underline hover:text-rose-200 transition"
+                                >
+                                    Reintentar ahora
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
             </section>

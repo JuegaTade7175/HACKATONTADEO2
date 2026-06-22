@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
-import type { Tropel, TropelPage } from '../types/api'
+import type { Tropel, TropelPage, SectorSummary } from '../types/api'
 
 const SORT_OPTIONS = [
     { value: 'updatedAt,desc', label: 'Actualizados' },
@@ -11,9 +11,28 @@ const SORT_OPTIONS = [
 
 const PAGE_SIZES = [10, 20, 50]
 
+const SPECIES_OPTIONS = [
+    { value: '', label: 'Todas las especies' },
+    { value: 'BLOBITO', label: 'BLOBITO' },
+    { value: 'CHISPA', label: 'CHISPA' },
+    { value: 'GRUNON', label: 'GRUÑON' },
+    { value: 'DORMILON', label: 'DORMILON' },
+    { value: 'GLITCHY', label: 'GLITCHY' },
+]
+
+const VITAL_STATE_OPTIONS = [
+    { value: '', label: 'Todos los estados vitales' },
+    { value: 'ESTABLE', label: 'ESTABLE' },
+    { value: 'HAMBRIENTO', label: 'HAMBRIENTO' },
+    { value: 'AGITADO', label: 'AGITADO' },
+    { value: 'MUTANDO', label: 'MUTANDO' },
+    { value: 'CRITICO', label: 'CRÍTICO' },
+]
+
 export default function TropelsPage() {
     const [searchParams, setSearchParams] = useSearchParams()
     const [data, setData] = useState<TropelPage | null>(null)
+    const [sectors, setSectors] = useState<SectorSummary[]>([])
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
 
@@ -21,36 +40,59 @@ export default function TropelsPage() {
     const size = Number(searchParams.get('size') ?? 20)
     const sort = searchParams.get('sort') ?? 'updatedAt,desc'
     const q = searchParams.get('q') ?? ''
+    const species = searchParams.get('species') ?? ''
+    const vitalState = searchParams.get('vitalState') ?? ''
+    const sectorId = searchParams.get('sectorId') ?? ''
 
-    const query = useMemo(() => ({
-        page: String(page),
-        size: String(size),
-        sort,
-        q,
-    }), [page, size, sort, q])
+    // Fetch Sectors for filter dropdown
+    useEffect(() => {
+        api.get<{ items: SectorSummary[] }>('/sectors')
+            .then((res) => {
+                setSectors(res.data.items)
+            })
+            .catch((err) => {
+                console.error('Error fetching sectors for filters:', err)
+            })
+    }, [])
+
+    const query = useMemo(() => {
+        const params: Record<string, string> = {
+            page: String(page),
+            size: String(size),
+            sort,
+        }
+        if (q) params.q = q
+        if (species) params.species = species
+        if (vitalState) params.vitalState = vitalState
+        if (sectorId) params.sectorId = sectorId
+        return params;
+    }, [page, size, sort, q, species, vitalState, sectorId])
 
     useEffect(() => {
-        let active = true
+        const controller = new AbortController()
         setLoading(true)
         setError(null)
 
         api
-            .get<TropelPage>('/tropels', { params: query })
+            .get<TropelPage>('/tropels', { 
+                params: query,
+                signal: controller.signal
+            })
             .then((response) => {
-                if (!active) return
                 setData(response.data)
             })
-            .catch(() => {
-                if (!active) return
+            .catch((err) => {
+                if (err instanceof DOMException && err.name === 'AbortError') {
+                    return
+                }
                 setError('No se pudieron cargar los tropeles. Intenta nuevamente.')
             })
             .finally(() => {
-                if (!active) return
                 setLoading(false)
             })
 
         return () => {
-            active = false
+            controller.abort()
         }
     }, [query])
 
@@ -72,46 +114,107 @@ export default function TropelsPage() {
     return (
         <div className="space-y-8">
             <div className="rounded-3xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-slate-950/10">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-col gap-6">
                     <div>
                         <h1 className="text-2xl font-semibold text-slate-100">Atlas de Tropeles</h1>
-                        <p className="mt-2 text-sm text-slate-400">Explora, ordena y busca en tiempo real con filtros sincronizados en URL.</p>
+                        <p className="mt-2 text-sm text-slate-400">Explora, ordena y filtra tus criaturas digitales en tiempo real con la URL sincronizada.</p>
                     </div>
-                    <div className="flex flex-wrap gap-3">
-                        <input
-                            value={q}
-                            onChange={(event) => updateParam('q', event.target.value)}
-                            placeholder="Buscar tropeles..."
-                            className="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-100 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
-                        />
-                        <select
-                            value={sort}
-                            onChange={(event) => updateParam('sort', event.target.value)}
-                            className="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-100 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
-                        >
-                            {SORT_OPTIONS.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                    {option.label}
-                                </option>
-                            ))}
-                        </select>
-                        <select
-                            value={String(size)}
-                            onChange={(event) => updateParam('size', event.target.value)}
-                            className="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-100 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
-                        >
-                            {PAGE_SIZES.map((value) => (
-                                <option key={value} value={value}>
-                                    {value} / página
-                                </option>
-                            ))}
-                        </select>
+                    
+                    {/* Filtros */}
+                    <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+                        <label className="block text-sm text-slate-200">
+                            Buscar
+                            <input
+                                value={q}
+                                onChange={(event) => updateParam('q', event.target.value)}
+                                placeholder="Buscar..."
+                                className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-100 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                            />
+                        </label>
+                        
+                        <label className="block text-sm text-slate-200">
+                            Especie
+                            <select
+                                value={species}
+                                onChange={(event) => updateParam('species', event.target.value)}
+                                className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-100 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                            >
+                                {SPECIES_OPTIONS.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+
+                        <label className="block text-sm text-slate-200">
+                            Estado Vital
+                            <select
+                                value={vitalState}
+                                onChange={(event) => updateParam('vitalState', event.target.value)}
+                                className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-100 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                            >
+                                {VITAL_STATE_OPTIONS.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+
+                        <label className="block text-sm text-slate-200">
+                            Sector
+                            <select
+                                value={sectorId}
+                                onChange={(event) => updateParam('sectorId', event.target.value)}
+                                className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-100 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                            >
+                                <option value="">Todos los sectores</option>
+                                {sectors.map((sec) => (
+                                    <option key={sec.id} value={sec.id}>
+                                        {sec.name} ({sec.sectorCode})
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+
+                        <label className="block text-sm text-slate-200">
+                            Ordenar por
+                            <select
+                                value={sort}
+                                onChange={(event) => updateParam('sort', event.target.value)}
+                                className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-100 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                            >
+                                {SORT_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                        {option.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+
+                        <label className="block text-sm text-slate-200">
+                            Paginación
+                            <select
+                                value={String(size)}
+                                onChange={(event) => updateParam('size', event.target.value)}
+                                className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-100 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                            >
+                                {PAGE_SIZES.map((value) => (
+                                    <option key={value} value={value}>
+                                        {value} / página
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
                     </div>
                 </div>
             </div>
 
             {loading ? (
-                <p className="text-slate-300">Cargando tropeles...</p>
+                <div className="flex h-40 items-center justify-center rounded-3xl border border-slate-800 bg-slate-900/40">
+                    <p className="text-slate-300">Cargando tropeles...</p>
+                </div>
             ) : error ? (
                 <p className="text-rose-400">{error}</p>
             ) : data?.content.length ? (

@@ -24,3 +24,54 @@ select,
 textarea {
     font: inherit;
 }
+
+/* --- Checkpoint 5: Scroll-driven Animations --- */
+.story-card {
+    view-timeline-name: --card-timeline;
+    view-timeline-axis: block;
+    will-change: transform, opacity;
+}
+
+@supports (animation-timeline: view()) {
+    .story-card {
+        animation: card-reveal linear both;
+        animation-timeline: --card-timeline;
+        animation-range: entry 5% cover 40%;
+    }
+}
+
+@keyframes card-reveal {
+    from {
+        opacity: 0.3;
+        transform: scale(0.96) translateY(20px);
+        filter: blur(4px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+        filter: blur(0px);
+    }
+}
+
+/* --- Support for prefers-reduced-motion --- */
+@media (prefers-reduced-motion: reduce) {
+    .story-card {
+        animation: none !important;
+        transition: none !important;
+        transform: none !important;
+        filter: none !important;
+    }
+    .duration-300, .duration-500, .transition-all {
+        transition-duration: 0ms !important;
+        transition: none !important;
+    }
+}
+
+/* --- Checkpoint 5: View Transition Names --- */
+.view-transition-sector-header {
+    view-transition-name: sector-header;
+}
+
+.view-transition-sector-card {
+    view-transition-name: sector-card;
+}
