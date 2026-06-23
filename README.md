@@ -83,5 +83,5 @@ Este es el frontend para la consola operativa de administración de criaturas di
 Crea un archivo `.env` en la raíz del proyecto con la URL base del API provista por el docente:
 
 ```properties
-VITE_API_BASE_URL=https://<backend-url>/api/v1
+VITE_API_BASE_URL=https://hackaton-20261-front-587720740455.us-east1.run.app
 ```
