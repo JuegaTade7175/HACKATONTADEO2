@@ -11,7 +11,7 @@ export default defineConfig({
     port: 5174,
     proxy: {
       '/api': {
-        target: 'http://localhost:8081',
+        target: process.env.VITE_API_BASE_URL || 'https://hackaton-20261-front-587720740455.us-east1.run.app',
         changeOrigin: true,
       },
     },

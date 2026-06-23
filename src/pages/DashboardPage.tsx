@@ -88,6 +88,7 @@ export default function DashboardPage() {
                         <div
                             key={sector.id}
                             className="view-transition-sector-card rounded-3xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-slate-950/10 flex flex-col justify-between"
+                            style={{ viewTransitionName: `sector-card-${sector.id}` }}
                         >
                             <div>
                                 <div className="flex items-start justify-between gap-4">
