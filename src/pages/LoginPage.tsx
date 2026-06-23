@@ -24,8 +24,22 @@ export default function LoginPage() {
             const response = await login({ teamCode, email, password })
             signIn(response.token, response.user)
             navigate(from, { replace: true })
-        } catch {
-            setError('Error en el login. Verifica tus credenciales y vuelve a intentar.')
+        } catch (err: any) {
+            if (err?.response) {
+                const status = err.response.status
+                const message = err.response.data?.message || err.response.data?.error || ''
+                if (status === 401 || status === 403) {
+                    setError(`Credenciales incorrectas (Error ${status}): ${message || 'Verifica tu Team Code, Email o Password.'}`)
+                } else if (status === 404) {
+                    setError(`Ruta del backend no encontrada (Error 404). Verifica si la URL base en el .env tiene el prefijo /api/v1`)
+                } else {
+                    setError(`Error en el servidor (Error ${status}): ${message || 'Error desconocido'}`)
+                }
+            } else if (err?.request) {
+                setError('No se pudo conectar con el servidor backend. Verifica tu conexión de red o si el servidor está caído (Network Error).')
+            } else {
+                setError(`Error en la solicitud: ${err?.message || 'Error desconocido'}`)
+            }
         } finally {
             setLoading(false)
         }
